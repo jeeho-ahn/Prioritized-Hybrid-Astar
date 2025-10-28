@@ -12,6 +12,7 @@
 #include <Obstacle.h>
 
 #include <Reeds_Shepp.h>
+#include <Params.h>
 
 // PHA* Implementation
 std::pair<double, double> project(const Corners& corners, const Point& axis) {
@@ -81,7 +82,7 @@ struct Node {
 class PHAStar {
 private:
     std::unique_ptr<Node> start, goal;
-    std::vector<Obstacle> obstacles;
+    std::vector<DynamicObstacle> obstacles;
     Params params;
     int x_width, y_width, theta_width, time_width;
     std::vector<double> ob_diags;
@@ -95,9 +96,34 @@ private:
         return (((static_cast<size_t>(iy) * x_width + ix) * theta_width + itheta) * time_width) + itime;
     }
 
-    Node* new_node(double x, double y, double yaw, double t, double cost, Node* parent, int direction) {
-        all_nodes.emplace_back(std::make_unique<Node>(x, y, yaw, t, cost, parent, direction));
-        return all_nodes.back().get();
+    std::tuple<double, double, double, bool> get_ob_pose(const DynamicObstacle& ob, double global_t) {
+        double r_t = global_t - ob.start_time;
+        if (ob.path.empty()) {
+            return {0.0, 0.0, 0.0, false};
+        }
+        if (r_t < ob.path[0].time) {
+            const auto& wp = ob.path[0];
+            return {wp.x, wp.y, wp.yaw, wp.is_present};
+        }
+        if (r_t >= ob.path.back().time) {
+            const auto& wp = ob.path.back();
+            return {wp.x, wp.y, wp.yaw, wp.is_present};
+        }
+        auto it = std::lower_bound(ob.path.begin(), ob.path.end(), r_t, [](const Waypoint& wp, double t) { return wp.time < t; });
+        size_t j = std::distance(ob.path.begin(), it);
+        if (j < ob.path.size() && ob.path[j].time == r_t) {
+            const auto& wp = ob.path[j];
+            return {wp.x, wp.y, wp.yaw, wp.is_present};
+        }
+        size_t i = j - 1;
+        double frac = (r_t - ob.path[i].time) / (ob.path[i + 1].time - ob.path[i].time);
+        double x = ob.path[i].x + frac * (ob.path[i + 1].x - ob.path[i].x);
+        double y = ob.path[i].y + frac * (ob.path[i + 1].y - ob.path[i].y);
+        double dyaw = mod2pi(ob.path[i + 1].yaw - ob.path[i].yaw);
+        double yaw = ob.path[i].yaw + frac * dyaw;
+        yaw = mod2pi(yaw);
+        bool is_present = ob.path[i].is_present && ob.path[i + 1].is_present;
+        return {x, y, yaw, is_present};
     }
 
     Node* generate_node(Node* current, std::pair<int, double> prim) {
@@ -163,11 +189,10 @@ private:
             if (!is_in_bounds(corners_r, params.min_x, params.max_x, params.min_y, params.max_y)) return false;
             for (size_t idx = 0; idx < obstacles.size(); ++idx) {
                 const auto& ob = obstacles[idx];
-                double x_o = ob.x + ob.vx * t_i;
-                double y_o = ob.y + ob.vy * t_i;
+                auto [x_o, y_o, yaw_o, is_present] = get_ob_pose(ob, t_i);
+                if (!is_present) continue;
                 double dist = std::hypot(x_i - x_o, y_i - y_o);
                 if (dist > diag_r + ob_diags[idx] + params.safety_margin) continue;
-                double yaw_o = ob.yaw + ob.vyaw * t_i;
                 auto corners_o = get_corners(x_o, y_o, yaw_o, ob.front, ob.rear, ob.width);
                 if (rectangles_intersect(corners_r, corners_o)) return false;
             }
@@ -185,11 +210,10 @@ private:
         if (!is_in_bounds(corners_r, params.min_x, params.max_x, params.min_y, params.max_y)) return false;
         for (size_t idx = 0; idx < obstacles.size(); ++idx) {
             const auto& ob = obstacles[idx];
-            double x_o = ob.x + ob.vx * t_i;
-            double y_o = ob.y + ob.vy * t_i;
+            auto [x_o, y_o, yaw_o, is_present] = get_ob_pose(ob, t_i);
+            if (!is_present) continue;
             double dist = std::hypot(node->x - x_o, node->y - y_o);
             if (dist > diag_r + ob_diags[idx] + params.safety_margin) continue;
-            double yaw_o = ob.yaw + ob.vyaw * t_i;
             auto corners_o = get_corners(x_o, y_o, yaw_o, ob.front, ob.rear, ob.width);
             if (rectangles_intersect(corners_r, corners_o)) return false;
         }
@@ -200,9 +224,9 @@ private:
         double dx = goal->x - current->x;
         double dy = goal->y - current->y;
         if (std::hypot(dx, dy) > params.analytic_threshold) return {{}, 0.0};
-        auto [x_rs, y_rs, yaw_rs, ctypes, lengths] = reeds_shepp_path_planning(
+        auto [x_rs, y_rs, yaw_rs, ctypes, lengths] = ReedsShepp::path_planning(
             current->x, current->y, current->yaw, goal->x, goal->y, goal->yaw, params.max_curvature, params.rs_step_size
-        );
+            );
         if (x_rs.empty()) return {{}, 0.0};
         std::vector<std::tuple<double, double, double>> rs_path;
         for (size_t i = 0; i < x_rs.size(); ++i) {
@@ -237,11 +261,10 @@ private:
                     if (!is_in_bounds(corners_r, params.min_x, params.max_x, params.min_y, params.max_y)) return false;
                     for (size_t idx = 0; idx < obstacles.size(); ++idx) {
                         const auto& ob = obstacles[idx];
-                        double x_o = ob.x + ob.vx * t_i;
-                        double y_o = ob.y + ob.vy * t_i;
+                        auto [x_o, y_o, yaw_o, is_present] = get_ob_pose(ob, t_i);
+                        if (!is_present) continue;
                         double dist_o = std::hypot(x_i - x_o, y_i - y_o);
                         if (dist_o > diag_r + ob_diags[idx] + params.safety_margin) continue;
-                        double yaw_o = ob.yaw + ob.vyaw * t_i;
                         auto corners_o = get_corners(x_o, y_o, yaw_o, ob.front, ob.rear, ob.width);
                         if (rectangles_intersect(corners_r, corners_o)) return false;
                     }
@@ -257,9 +280,9 @@ private:
     }
 
     double calc_heuristic(Node* node) {
-        auto [_, __, ___, ____, lengths] = reeds_shepp_path_planning(
-            node->x, node->y, node->yaw, goal->x, goal->y, goal->yaw, params.max_curvature, params.rs_step_size * 10
-        );
+        auto [_, __, ___, ____, lengths] = ReedsShepp::path_planning(
+            node->x, node->y, node->yaw, goal->x, goal->y, goal->yaw, params.max_curvature, params.rs_step_size * 5
+            );
         if (lengths.empty()) return std::numeric_limits<double>::infinity();
         double h = 0.0;
         for (double l : lengths) h += std::abs(l);
@@ -290,10 +313,18 @@ private:
         return timed_path;
     }
 
+    Node* new_node(double x, double y, double yaw, double t, double cost, Node* parent, int direction) {
+        all_nodes.emplace_back(std::make_unique<Node>(x, y, yaw, t, cost, parent, direction));
+        return all_nodes.back().get();
+    }
+
+
 public:
-    PHAStar(double start_x, double start_y, double start_yaw, double goal_x, double goal_y, double goal_yaw, const std::vector<Obstacle>& obs, const Params& p)
+    PHAStar(double start_x, double start_y, double start_yaw, double goal_x, double goal_y, double goal_yaw, double start_time, double planning_speed, const std::vector<DynamicObstacle>& obs, Params p)
         : params(p), obstacles(obs) {
-        start = std::make_unique<Node>(start_x, start_y, start_yaw, 0.0, 0.0, nullptr, 1);
+        params.speed = planning_speed;
+        params.movement_length = params.speed * params.time_step;
+        start = std::make_unique<Node>(start_x, start_y, start_yaw, start_time, 0.0, nullptr, 1);
         goal = std::make_unique<Node>(goal_x, goal_y, goal_yaw, 0.0, 0.0, nullptr, 1);
         x_width = static_cast<int>((params.max_x - params.min_x) / params.xy_resolution) + 1;
         y_width = static_cast<int>((params.max_y - params.min_y) / params.xy_resolution) + 1;
@@ -304,6 +335,7 @@ public:
             ob_diags.push_back(std::sqrt((ob.front + ob.rear) * (ob.front + ob.rear) + ob.width * ob.width) / 2);
         }
     }
+
 
     std::vector<std::tuple<double, double, double, double>> planning() {
         using PQElem = std::tuple<double, uint64_t, Node*>;

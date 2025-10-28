@@ -25,6 +25,8 @@
 #include <Params.h>
 
 
+
+
 std::tuple<double, double, double> interpolate_timed_path(const std::vector<std::tuple<double, double, double, double>>& timed_path, double t) {
     if (t <= std::get<0>(timed_path[0])) return {std::get<1>(timed_path[0]), std::get<2>(timed_path[0]), std::get<3>(timed_path[0])};
     if (t >= std::get<0>(timed_path.back())) return {std::get<1>(timed_path.back()), std::get<2>(timed_path.back()), std::get<3>(timed_path.back())};
@@ -48,7 +50,7 @@ std::tuple<double, double, double> interpolate_timed_path(const std::vector<std:
 class VizWidget : public QWidget {
 private:
     const std::vector<std::tuple<double, double, double, double>>& timed_path;
-    const std::vector<Obstacle>& obstacles;
+    const std::vector<DynamicObstacle>& obstacles;
     const Params& params;
     double current_t = 0.0;
     double max_t = 0.0;
@@ -63,7 +65,7 @@ private:
     }
 
 public:
-    VizWidget(const std::vector<std::tuple<double, double, double, double>>& path, const std::vector<Obstacle>& obs, const Params& p)
+    VizWidget(const std::vector<std::tuple<double, double, double, double>>& path, const std::vector<DynamicObstacle>& obs, const Params& p)
         : timed_path(path), obstacles(obs), params(p) {
         if (!timed_path.empty()) max_t = std::get<0>(timed_path.back());
         setMinimumSize(600, 600);
@@ -85,6 +87,10 @@ protected:
         auto screen_x = [&](double x) { return (x - params.min_x) * sc; };
         auto screen_y = [&](double y) { return (params.max_y - y) * sc; };
 
+        // Draw boundary a little inside
+        p.setPen(Qt::black);
+        p.drawRect(QRectF(screen_x(params.min_x) + 0.5, screen_y(params.max_y) + 0.5, sc * (params.max_x - params.min_x) - 1, sc * (params.max_y - params.min_y) - 1));
+
         // Draw grid
         p.setPen(Qt::lightGray);
         for (double x = params.min_x; x <= params.max_x + 1e-6; x += params.xy_resolution) {
@@ -99,11 +105,6 @@ protected:
             double sx2 = screen_x(params.max_x);
             p.drawLine(QPointF(sx1, sy), QPointF(sx2, sy));
         }
-
-        // Draw boundary
-        p.setPen(QPen(Qt::black,3));
-        p.drawRect(QRectF(screen_x(params.min_x) + 1, screen_y(params.max_y) + 1, sc * (params.max_x - params.min_x) - 3, sc * (params.max_y - params.min_y) - 3));
-
 
         // Draw path
         p.setPen(QPen(Qt::red, 2));
@@ -121,18 +122,18 @@ protected:
         // Indicate robot front with a red arrow
         double front_x = rx + params.robot_front_length * std::cos(ryaw);
         double front_y = ry + params.robot_front_length * std::sin(ryaw);
-        p.setPen(QPen(QColor("FFD6BA"), 2));
+        p.setPen(QPen(Qt::red, 2));
         p.drawLine(screen_x(rx), screen_y(ry), screen_x(front_x), screen_y(front_y));
 
         // Draw obstacles
         for (const auto& ob : obstacles) {
-            double ox = ob.x + ob.vx * current_t;
-            double oy = ob.y + ob.vy * current_t;
-            double oyaw = ob.yaw + ob.vyaw * current_t;
+            auto [ox, oy, oyaw, is_present] = get_ob_pose(ob, current_t);
+            if (!is_present) continue;
             auto ob_corners = get_corners(ox, oy, oyaw, ob.front, ob.rear, ob.width);
             drawFilledPolygon(p, ob_corners, QColor("#89B0AE"), screen_x, screen_y);
         }
     }
 };
+
 
 #endif // VISUALIZATION_H

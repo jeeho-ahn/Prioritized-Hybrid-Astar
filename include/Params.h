@@ -1,6 +1,8 @@
 #ifndef PARAMS_H
 #define PARAMS_H
 
+#include <vector>
+
 struct Params {
     double xy_resolution = 0.1;
     double yaw_resolution = M_PI / 6.0; // 30 degrees
@@ -33,7 +35,7 @@ struct Params {
     double analytic_threshold = 5.0 * min_turn_radius;
     double rs_step_size = 0.2;
     double inflation = 1.1;
-    double safety_margin = 0.05;
+    double safety_margin = 0.01;
 };
 
 #endif // PARAMS_H
