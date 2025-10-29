@@ -65,11 +65,13 @@ std::vector<Path> set_path(std::vector<Path> paths, const std::vector<double>& l
     return paths;
 }
 
+constexpr double eps = 1e-6;
+
 std::tuple<bool, std::vector<double>, std::string> left_straight_left(double x, double y, double phi) {
     auto [u, t] = polar(x - std::sin(phi), y - 1.0 + std::cos(phi));
-    if (t >= -1e-9 && t <= M_PI) {  // Relaxed
+    if (t >= -eps && t <= M_PI) {  // Relaxed
         double v = mod2pi(phi - t);
-        if (v >= -1e-9 && v <= M_PI) {  // Relaxed
+        if (v >= -eps && v <= M_PI) {  // Relaxed
             return {true, {t, u, v}, "LSL"};
         }
     }
@@ -84,7 +86,7 @@ std::tuple<bool, std::vector<double>, std::string> left_straight_right(double x,
         double theta = std::atan2(2.0, u);
         double t = mod2pi(t1 + theta);
         double v = mod2pi(t - phi);
-        if (t >= -1e-9 && v >= -1e-9) {  // Relaxed
+        if (t >= -eps && v >= -eps) {  // Relaxed
             return {true, {t, u, v}, "LSR"};
         }
     }
@@ -100,7 +102,7 @@ std::tuple<bool, std::vector<double>, std::string> left_x_right_x_left(double x,
         double t = mod2pi(A + theta + M_PI / 2);
         double u = mod2pi(M_PI - 2 * A);
         double v = mod2pi(phi - t - u);
-        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed, add for u
+        if (t >= -eps && u >= -eps && v >= -eps) {  // Relaxed, add for u
             return {true, {t, -u, v}, "LRL"};
         }
     }
@@ -116,7 +118,7 @@ std::tuple<bool, std::vector<double>, std::string> left_x_right_left(double x, d
         double t = mod2pi(A + theta + M_PI / 2);
         double u = mod2pi(M_PI - 2 * A);
         double v = mod2pi(-phi + t + u);
-        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
+        if (t >= -eps && u >= -eps && v >= -eps) {  // Relaxed
             return {true, {t, -u, -v}, "LRL"};
         }
     }
@@ -132,7 +134,7 @@ std::tuple<bool, std::vector<double>, std::string> left_right_x_left(double x, d
         double A = std::asin(2 * std::sin(u) / u1);
         double t = mod2pi(-A + theta + M_PI / 2);
         double v = mod2pi(t - u - phi);
-        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
+        if (t >= -eps && u >= -eps && v >= -eps) {  // Relaxed
             return {true, {t, u, -v}, "LRL"};
         }
     }
@@ -148,7 +150,7 @@ std::tuple<bool, std::vector<double>, std::string> left_right_x_left_right(doubl
         double t = mod2pi(theta + A + M_PI / 2);
         double u = mod2pi(A);
         double v = mod2pi(phi - t + 2 * u);
-        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
+        if (t >= -eps && u >= -eps && v >= -eps) {  // Relaxed
             return {true, {t, u, -u, -v}, "LRLR"};
         }
     }
@@ -165,7 +167,7 @@ std::tuple<bool, std::vector<double>, std::string> left_x_right_left_x_right(dou
         double A = std::asin(2 * std::sin(u) / u1);
         double t = mod2pi(theta + A + M_PI / 2);
         double v = mod2pi(phi - t + u);
-        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
+        if (t >= -eps && u >= -eps && v >= -eps) {  // Relaxed
             return {true, {t, -u, u, -v}, "LRLR"};
         }
     }
@@ -277,16 +279,16 @@ std::vector<Path> generate_path(double sx, double sy, double syaw, double gx, do
 
     for (auto func : path_funcs) {
         auto [flag, travels, dirs] = func(x_, y_, dth);
-        if (flag) paths = set_path(paths, travels, dirs, step_size, false);
+        if (flag) paths = set_path(paths, travels, dirs, step_size);
 
-        std::tie(flag, travels, dirs) = func(x_, y_, -dth);
-        if (flag) paths = set_path(paths, timeflip(travels), dirs, step_size, false);
+        std::tie(flag, travels, dirs) = func(-x_, y_, -dth);
+        if (flag) paths = set_path(paths, timeflip(travels), dirs, step_size);
 
         std::tie(flag, travels, dirs) = func(x_, -y_, -dth);
-        if (flag) paths = set_path(paths, travels, reflect(dirs), step_size, true);
+        if (flag) paths = set_path(paths, travels, reflect(dirs), step_size);
 
         std::tie(flag, travels, dirs) = func(-x_, -y_, dth);
-        if (flag) paths = set_path(paths, timeflip(travels), reflect(dirs), step_size, true);
+        if (flag) paths = set_path(paths, timeflip(travels), reflect(dirs), step_size);
     }
 
     return paths;
@@ -356,8 +358,11 @@ std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::v
 
 std::vector<Path> calc_paths(double sx, double sy, double syaw, double gx, double gy, double gyaw, double maxc, double step_size, double wb) {
     auto paths = generate_path(sx, sy, syaw, gx, gy, gyaw, maxc, step_size);
+    std::vector<Path> valid_paths;
     for (auto& path : paths) {
         auto [xs, ys, yaws, dirs, steers] = generate_local_course(path.lengths, path.ctypes, maxc, step_size * maxc, wb);
+
+
         path.x.resize(xs.size());
         path.y.resize(ys.size());
         path.yaw.resize(yaws.size());
@@ -370,8 +375,17 @@ std::vector<Path> calc_paths(double sx, double sy, double syaw, double gx, doubl
         }
         for (auto& len : path.lengths) len /= maxc;
         path.L /= maxc;
+
+        double last_x = path.x.back();
+        double last_y = path.y.back();
+        double last_yaw = mod2pi(path.yaw.back());
+        double goal_yaw = mod2pi(gyaw);
+        if (std::hypot(last_x - gx, last_y - gy) > 1e-5 || std::fabs(mod2pi(last_yaw - goal_yaw)) > 1e-5) {
+            continue;  // Skip invalid due to FP
+        }
+        valid_paths.push_back(path);
     }
-    return paths;
+    return valid_paths;
 }
 
 std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::string, std::vector<double>, std::vector<double>, std::vector<int>> reeds_shepp_path_planning(double sx, double sy, double syaw, double gx, double gy, double gyaw, double maxc, double step_size, double wb) {

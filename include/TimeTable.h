@@ -84,8 +84,12 @@ private:
         Pose p;
         p.x = p1.x + frac * (p2.x - p1.x);
         p.y = p1.y + frac * (p2.y - p1.y);
-        double dyaw = mod2pi(p2.yaw - p1.yaw);
-        p.yaw = mod2pi(p1.yaw + frac * dyaw);
+        //double dyaw = mod2pi(p2.yaw - p1.yaw); // mod2pi causes funny spinning
+        //p.yaw = mod2pi(p1.yaw + frac * dyaw);
+        double dyaw = pi_2_pi(p2.yaw - p1.yaw);
+        double yaw = p1.yaw + frac * dyaw;
+        p.yaw = pi_2_pi(yaw);
+        p.yaw = mod2pi(p.yaw);
         return p;
     }
 

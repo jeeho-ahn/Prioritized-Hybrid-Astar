@@ -9,6 +9,7 @@
 #include <Visualization.h>
 
 #include <PHAstar.h>
+#include <iomanip>
 
 int main(int argc, char** argv) {
     Params params;
@@ -63,7 +64,7 @@ int main(int argc, char** argv) {
     // Plans: robot name -> {goal, is_transfer, obj_name}
     std::unordered_map<std::string, std::tuple<Pose, bool, std::string>> robot_plans = {
         {"robot1", {{4.0, 4.0, M_PI / 2}, false, "obj1"}},
-        {"robot2", {{3.0, 1.0, M_PI/2}, false, ""}} // todo: problem found when goal orientation is pi/2
+        {"robot2", {{3.0, 1.0, 0}, false, ""}} // todo: problem found when goal orientation is pi/2
     };
 
     for (const auto& r_name : priority) {
@@ -78,6 +79,11 @@ int main(int argc, char** argv) {
 
         if (!waypoints.empty()) {
             std::cout << "Last waypoint for " << r_name << ": time=" << waypoints.back().time << ", x=" << waypoints.back().x << ", y=" << waypoints.back().y << ", yaw=" << waypoints.back().yaw << std::endl;
+
+            for (const auto& wp : waypoints) {
+                std::cout << "time=" << wp.time << ", x=" << wp.x << ", y=" << wp.y << ", yaw=" << wp.yaw << std::endl;
+            }
+
             Trajectory traj;
             traj.entity = r;
             traj.start_time = 0.0;
@@ -91,6 +97,21 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Print TimeTable poses for robot2
+    std::cout << "TimeTable poses for robot2:" << std::endl;
+    EntityMeta* robot2_ent = entities["robot2"];
+    double max_t = 0.0;
+    for (const auto& traj : all_trajectories) {
+        if (!traj.waypoints.empty()) {
+            max_t = std::max(max_t, traj.waypoints.back().time);
+        }
+    }
+    for (double t = 0.0; t <= max_t + 1e-6; t += 0.1) {  // Step of 0.1 for fine-grained view
+        Pose p = timetable.get_pose(robot2_ent, t);
+        std::cout << "t=" << std::fixed << std::setprecision(4) << t
+                  << ", x=" << p.x << ", y=" << p.y << ", yaw=" << p.yaw << std::endl;
+    }
+
     QApplication app(argc, argv);
     QMainWindow win;
     VizWidget* viz = new VizWidget(timetable, entities, all_trajectories, params);
@@ -99,7 +120,7 @@ int main(int argc, char** argv) {
     QWidget* panel = new QWidget;
     QHBoxLayout* layout = new QHBoxLayout(panel);
     QSlider* slider = new QSlider(Qt::Horizontal);
-    double max_t = 0.0;
+    max_t = 0.0;
     for (const auto& traj : all_trajectories) {
         if (!traj.waypoints.empty()) max_t = std::max(max_t, traj.waypoints.back().time);
     }
