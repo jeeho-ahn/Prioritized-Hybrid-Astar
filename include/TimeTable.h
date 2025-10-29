@@ -21,9 +21,10 @@ public:
 
     void add_trajectory(const Trajectory& traj) {
         EntityMeta* ent = traj.entity;
-        double min_t = traj.waypoints.empty() ? traj.start_time : traj.waypoints.front().time;
-        double max_t = traj.waypoints.empty() ? traj.start_time : traj.waypoints.back().time;
-        for (double t = 0.0; t <= max_t + time_increment; t += time_increment) {  // Up to max_t
+        if (traj.waypoints.empty()) return;
+        double min_t = traj.waypoints.front().time;
+        double max_t = traj.waypoints.back().time;
+        for (double t = 0.0; t <= max_t + time_increment; t += time_increment) {
             if (t >= min_t && t <= max_t) {
                 Pose p = interpolate_waypoints(traj.waypoints, t);
                 per_entity_table[ent][t] = p;
@@ -32,6 +33,19 @@ public:
                     per_entity_table[traj.transferred_object][t] = obj_p;
                 }
             }
+        }
+        // Explicitly add the first and last waypoints
+        Pose p_min = traj.waypoints.front();
+        per_entity_table[ent][min_t] = p_min;
+        if (traj.is_transfer && traj.transferred_object) {
+            Pose obj_p_min = compute_object_pose(p_min, ent->size, traj.transferred_object->size);
+            per_entity_table[traj.transferred_object][min_t] = obj_p_min;
+        }
+        Pose p_max = traj.waypoints.back();
+        per_entity_table[ent][max_t] = p_max;
+        if (traj.is_transfer && traj.transferred_object) {
+            Pose obj_p_max = compute_object_pose(p_max, ent->size, traj.transferred_object->size);
+            per_entity_table[traj.transferred_object][max_t] = obj_p_max;
         }
     }
 

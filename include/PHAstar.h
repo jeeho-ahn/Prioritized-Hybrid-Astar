@@ -392,24 +392,56 @@ public:
             open_set.pop();
             size_t n_id = calc_grid_index(current);
             if (closed_set.count(n_id)) continue;
-            if (current->cost > g_costs[n_id]) continue;
+            if (current->cost > g_costs[n_id]) continue;  // Outdated entry
             closed_set.insert(n_id);
-
-            double dist_to_goal = std::hypot(current->x - goal->x, current->y - goal->y);
-            double yaw_diff = std::abs(mod2pi(current->yaw - goal->yaw));
-            if (dist_to_goal < params.xy_resolution * 2.0 && yaw_diff < params.yaw_resolution) {
-                std::cout << "Goal reached directly via A*!" << std::endl;
-                return extract_path(current, {});
-            }
 
             if (!check_collision_at(current)) continue;
 
             auto [rs_path, rs_length] = analytic_expand(current);
             if (!rs_path.empty()) {
                 if (check_collision_along_rs(rs_path, current->t)) {
-                    std::cout << "Goal found with analytic expansion!" << std::endl;
-                    return extract_path(current, rs_path);
+                    auto waypoints = extract_path(current, rs_path);
+                    double arrival_t = waypoints.back().time;
+
+                    // Post-arrival check
+                    bool post_safe = true;
+                    for (double future_t = arrival_t + params.time_step; future_t <= params.max_time; future_t += params.time_step) {
+                        Node dummy(goal->x, goal->y, goal->yaw, future_t, 0.0, 0.0, nullptr, 0);
+                        if (!check_collision_at(&dummy)) {
+                            post_safe = false;
+                            break;
+                        }
+                    }
+
+                    if (post_safe) {
+                        std::cout << "Goal found with analytic expansion!" << std::endl;
+                        return waypoints;
+                    }
+                    // Else continue searching
                 }
+            }
+
+            // Goal check (assuming near-goal threshold)
+            double dist_to_goal = std::hypot(current->x - goal->x, current->y - goal->y);
+            double dyaw_to_goal = std::fabs(mod2pi(current->yaw - goal->yaw));
+            if (dist_to_goal < params.xy_resolution && dyaw_to_goal < params.yaw_resolution) {
+                auto waypoints = extract_path(current, {});
+                double arrival_t = waypoints.back().time;
+
+                bool post_safe = true;
+                for (double future_t = arrival_t + params.time_step; future_t <= params.max_time; future_t += params.time_step) {
+                    Node dummy(goal->x, goal->y, goal->yaw, future_t, 0.0, 0.0, nullptr, 0);
+                    if (!check_collision_at(&dummy)) {
+                        post_safe = false;
+                        break;
+                    }
+                }
+
+                if (post_safe) {
+                    std::cout << "Goal found!" << std::endl;
+                    return waypoints;
+                }
+                // Else continue
             }
 
             for (auto prim : motion_primitives) {
@@ -420,7 +452,7 @@ public:
                 if (closed_set.count(new_id)) continue;
                 double new_g = new_node->cost;
                 auto it = g_costs.find(new_id);
-                if (it != g_costs.end() && new_g >= it->second) continue;
+                if (it != g_costs.end() && new_g >= it->second) continue;  // Worse or equal
                 g_costs[new_id] = new_g;
                 open_set.emplace(new_g + calc_heuristic(new_node), node_id++, new_node);
             }

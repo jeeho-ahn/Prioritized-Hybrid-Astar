@@ -91,13 +91,13 @@ protected:
 
         // Draw grid
         p.setPen(Qt::lightGray);
-        for (double x = params.min_x; x <= params.max_x + 1e-6; x += params.xy_resolution) {
+        for (double x = params.min_x; x <= params.max_x + 1e-6; x += params.xy_resolution*5) {
             double sx = screen_x(x);
             double sy1 = screen_y(params.min_y);
             double sy2 = screen_y(params.max_y);
             p.drawLine(QPointF(sx, sy1), QPointF(sx, sy2));
         }
-        for (double y = params.min_y; y <= params.max_y + 1e-6; y += params.xy_resolution) {
+        for (double y = params.min_y; y <= params.max_y + 1e-6; y += params.xy_resolution*5) {
             double sy = screen_y(y);
             double sx1 = screen_x(params.min_x);
             double sx2 = screen_x(params.max_x);

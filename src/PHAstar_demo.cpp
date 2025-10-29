@@ -11,6 +11,8 @@
 #include <PHAstar.h>
 #include <iomanip>
 
+const bool print_path = false;
+
 int main(int argc, char** argv) {
     Params params;
     params.analytic_threshold = 5.0 * params.max_steer;  // Adjust if needed
@@ -38,9 +40,9 @@ int main(int argc, char** argv) {
     ObjectMeta obj1;
     obj1.name = "obj1";
     obj1.type = EntityType::OBJECT;
-    obj1.initial_pose = {1.6, 1.0, 0.0};  // In front of robot1
+    obj1.initial_pose = {1.6, 1.0, 0};
     obj1.size = {0.075, 0.075, 0.15};
-    obj1.goal_pose = {4.6, 4.0, M_PI / 2};
+    obj1.goal_pose = {4.6, 4.0, M_PI/2};
 
     ObjectMeta obj2;
     obj2.name = "obj2";
@@ -63,8 +65,8 @@ int main(int argc, char** argv) {
 
     // Plans: robot name -> {goal, is_transfer, obj_name}
     std::unordered_map<std::string, std::tuple<Pose, bool, std::string>> robot_plans = {
-        {"robot1", {{4.0, 4.0, M_PI / 2}, false, "obj1"}},
-        {"robot2", {{3.0, 2.0, 1.0}, false, ""}} // todo: problem found when goal orientation is pi/2
+        {"robot1", {{4, 4, M_PI/2}, false, "obj1"}},
+        {"robot2", {{3, 2, 1}, false, ""}}
     };
 
     for (const auto& r_name : priority) {
@@ -80,8 +82,10 @@ int main(int argc, char** argv) {
         if (!waypoints.empty()) {
             std::cout << "Last waypoint for " << r_name << ": time=" << waypoints.back().time << ", x=" << waypoints.back().x << ", y=" << waypoints.back().y << ", yaw=" << waypoints.back().yaw << std::endl;
 
-            for (const auto& wp : waypoints) {
-                std::cout << "time=" << wp.time << ", x=" << wp.x << ", y=" << wp.y << ", yaw=" << wp.yaw << std::endl;
+            if(print_path){
+                for (const auto& wp : waypoints) {
+                    std::cout << "time=" << wp.time << ", x=" << wp.x << ", y=" << wp.y << ", yaw=" << wp.yaw << std::endl;
+                }
             }
 
             Trajectory traj;
@@ -99,18 +103,21 @@ int main(int argc, char** argv) {
 
     // Print TimeTable poses for robot2
 
-    std::cout << "TimeTable poses for robot2:" << std::endl;
-    EntityMeta* robot2_ent = entities["robot2"];
-    double max_t = 0.0;
-    for (const auto& traj : all_trajectories) {
-        if (!traj.waypoints.empty()) {
-            max_t = std::max(max_t, traj.waypoints.back().time);
+    if(print_path)
+    {
+        std::cout << "TimeTable poses for robot2:" << std::endl;
+        EntityMeta* robot2_ent = entities["robot2"];
+        double max_tt = 0.0;
+        for (const auto& traj : all_trajectories) {
+            if (!traj.waypoints.empty()) {
+                max_tt = std::max(max_tt, traj.waypoints.back().time);
+            }
         }
-    }
-    for (double t = 0.0; t <= max_t + 1e-6; t += 0.1) {  // Step of 0.1 for fine-grained view
-        Pose p = timetable.get_pose(robot2_ent, t);
-        std::cout << "t=" << std::fixed << std::setprecision(4) << t
-                  << ", x=" << p.x << ", y=" << p.y << ", yaw=" << p.yaw << std::endl;
+        for (double t = 0.0; t <= max_tt + 1e-6; t += 0.1) {  // Step of 0.1 for fine-grained view
+            Pose p = timetable.get_pose(robot2_ent, t);
+            std::cout << "t=" << std::fixed << std::setprecision(4) << t
+                      << ", x=" << p.x << ", y=" << p.y << ", yaw=" << p.yaw << std::endl;
+        }
     }
 
 
@@ -122,7 +129,7 @@ int main(int argc, char** argv) {
     QWidget* panel = new QWidget;
     QHBoxLayout* layout = new QHBoxLayout(panel);
     QSlider* slider = new QSlider(Qt::Horizontal);
-    max_t = 0.0;
+    double max_t = 0.0;
     for (const auto& traj : all_trajectories) {
         if (!traj.waypoints.empty()) max_t = std::max(max_t, traj.waypoints.back().time);
     }
