@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     // Plans: robot name -> {goal, is_transfer, obj_name}
     std::unordered_map<std::string, std::tuple<Pose, bool, std::string>> robot_plans = {
         {"robot1", {{4.0, 4.0, M_PI / 2}, false, "obj1"}},
-        {"robot2", {{3.0, 1.0, 1.7}, false, ""}} // todo: problem found when goal orientation is pi/2
+        {"robot2", {{3.0, 1.0, M_PI/2}, false, ""}} // todo: problem found when goal orientation is pi/2
     };
 
     for (const auto& r_name : priority) {

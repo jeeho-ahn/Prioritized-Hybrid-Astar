@@ -34,7 +34,9 @@ struct Path {
     std::vector<double> x, y, yaw;
     std::vector<int> directions;
     std::vector<double> steers;
+    bool is_reflected = false;  // Added to track if path is from reflected space
 };
+
 
 std::pair<double, double> polar(double x, double y) {
     double r = std::hypot(x, y);
@@ -42,12 +44,13 @@ std::pair<double, double> polar(double x, double y) {
     return {r, theta};
 }
 
-std::vector<Path> set_path(std::vector<Path> paths, const std::vector<double>& lengths, const std::string& ctypes, double step_size) {
+std::vector<Path> set_path(std::vector<Path> paths, const std::vector<double>& lengths, const std::string& ctypes, double step_size, bool reflected = false) {
     Path path;
     path.ctypes = ctypes;
     path.lengths = lengths;
     path.L = 0.0;
     for (double len : lengths) path.L += std::abs(len);
+    path.is_reflected = reflected;  // Set the reflected flag
 
     bool exists = false;
     for (const auto& p : paths) {
@@ -64,9 +67,9 @@ std::vector<Path> set_path(std::vector<Path> paths, const std::vector<double>& l
 
 std::tuple<bool, std::vector<double>, std::string> left_straight_left(double x, double y, double phi) {
     auto [u, t] = polar(x - std::sin(phi), y - 1.0 + std::cos(phi));
-    if (0.0 <= t && t <= M_PI) {
+    if (t >= -1e-9 && t <= M_PI) {  // Relaxed
         double v = mod2pi(phi - t);
-        if (0.0 <= v && v <= M_PI) {
+        if (v >= -1e-9 && v <= M_PI) {  // Relaxed
             return {true, {t, u, v}, "LSL"};
         }
     }
@@ -81,7 +84,7 @@ std::tuple<bool, std::vector<double>, std::string> left_straight_right(double x,
         double theta = std::atan2(2.0, u);
         double t = mod2pi(t1 + theta);
         double v = mod2pi(t - phi);
-        if (t >= 0.0 && v >= 0.0) {
+        if (t >= -1e-9 && v >= -1e-9) {  // Relaxed
             return {true, {t, u, v}, "LSR"};
         }
     }
@@ -93,11 +96,12 @@ std::tuple<bool, std::vector<double>, std::string> left_x_right_x_left(double x,
     double eeta = y - 1 + std::cos(phi);
     auto [u1, theta] = polar(zeta, eeta);
     if (u1 <= 4.0) {
-        double u = -M_PI + 2 * std::acos(0.25 * u1);
-        double t = mod2pi(theta + 0.5 * u + M_PI / 2);
-        double v = mod2pi(phi - t + u);
-        if (t >= 0.0 && u <= 0.0) {
-            return {true, {t, u, v}, "LRL"};
+        double A = std::acos(0.25 * u1);
+        double t = mod2pi(A + theta + M_PI / 2);
+        double u = mod2pi(M_PI - 2 * A);
+        double v = mod2pi(phi - t - u);
+        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed, add for u
+            return {true, {t, -u, v}, "LRL"};
         }
     }
     return {false, {}, ""};
@@ -112,7 +116,9 @@ std::tuple<bool, std::vector<double>, std::string> left_x_right_left(double x, d
         double t = mod2pi(A + theta + M_PI / 2);
         double u = mod2pi(M_PI - 2 * A);
         double v = mod2pi(-phi + t + u);
-        return {true, {t, -u, -v}, "LRL"};
+        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
+            return {true, {t, -u, -v}, "LRL"};
+        }
     }
     return {false, {}, ""};
 }
@@ -126,7 +132,9 @@ std::tuple<bool, std::vector<double>, std::string> left_right_x_left(double x, d
         double A = std::asin(2 * std::sin(u) / u1);
         double t = mod2pi(-A + theta + M_PI / 2);
         double v = mod2pi(t - u - phi);
-        return {true, {t, u, -v}, "LRL"};
+        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
+            return {true, {t, u, -v}, "LRL"};
+        }
     }
     return {false, {}, ""};
 }
@@ -136,11 +144,11 @@ std::tuple<bool, std::vector<double>, std::string> left_right_x_left_right(doubl
     double eeta = y - 1 - std::cos(phi);
     auto [u1, theta] = polar(zeta, eeta);
     if (u1 <= 2.0) {
-        double rho = 0.25 * (2.0 + u1);
-        double u = std::acos(rho);
-        double t = mod2pi(theta + u + M_PI / 2);
+        double A = std::acos((u1 + 2) * 0.25);
+        double t = mod2pi(theta + A + M_PI / 2);
+        double u = mod2pi(A);
         double v = mod2pi(phi - t + 2 * u);
-        if (t >= 0.0 && u >= 0.0 && v >= 0.0) {
+        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
             return {true, {t, u, -u, -v}, "LRLR"};
         }
     }
@@ -151,14 +159,14 @@ std::tuple<bool, std::vector<double>, std::string> left_x_right_left_x_right(dou
     double zeta = x + std::sin(phi);
     double eeta = y - 1 - std::cos(phi);
     auto [u1, theta] = polar(zeta, eeta);
-    double u2 = (20 - u1 * u1) / 16.0;
+    double u2 = (20 - u1 * u1) / 16;
     if (0 <= u2 && u2 <= 1) {
         double u = std::acos(u2);
         double A = std::asin(2 * std::sin(u) / u1);
         double t = mod2pi(theta + A + M_PI / 2);
-        double v = mod2pi(t - phi);
-        if (t >= 0 && v >= 0) {
-            return {true, {t, -u, -u, v}, "LRLR"};
+        double v = mod2pi(phi - t + u);
+        if (t >= -1e-9 && u >= -1e-9 && v >= -1e-9) {  // Relaxed
+            return {true, {t, -u, u, -v}, "LRLR"};
         }
     }
     return {false, {}, ""};
@@ -231,9 +239,9 @@ std::tuple<bool, std::vector<double>, std::string> left_x_right90_straight_left9
     return {false, {}, ""};
 }
 
-std::vector<double> timeflip(const std::vector<double>& travels) {
-    std::vector<double> flipped = travels;
-    for (auto& d : flipped) d = -d;
+std::vector<double> timeflip(const std::vector<double>& lengths) {
+    std::vector<double> flipped;
+    for (double d : lengths) flipped.push_back(-d);
     return flipped;
 }
 
@@ -259,26 +267,26 @@ std::vector<Path> generate_path(double sx, double sy, double syaw, double gx, do
 
     std::vector<Path> paths;
     std::vector<std::tuple<bool, std::vector<double>, std::string> (*)(double, double, double)> path_funcs = {
-        left_straight_left, left_straight_right,
-        left_x_right_x_left, left_x_right_left, left_right_x_left,
-        left_right_x_left_right, left_x_right_left_x_right,
-        left_x_right90_straight_left, left_straight_right90_x_left,
-        left_x_right90_straight_right, left_straight_left90_x_right,
-        left_x_right90_straight_left90_x_right
+      left_straight_left, left_straight_right,
+      left_x_right_x_left, left_x_right_left, left_right_x_left,
+      left_right_x_left_right, left_x_right_left_x_right,
+      left_x_right90_straight_left, left_straight_right90_x_left,
+      left_x_right90_straight_right, left_straight_left90_x_right,
+      left_x_right90_straight_left90_x_right
     };
 
     for (auto func : path_funcs) {
         auto [flag, travels, dirs] = func(x_, y_, dth);
-        if (flag) paths = set_path(paths, travels, dirs, step_size);
+        if (flag) paths = set_path(paths, travels, dirs, step_size, false);
 
-        std::tie(flag, travels, dirs) = func(-x_, y_, -dth);
-        if (flag) paths = set_path(paths, timeflip(travels), dirs, step_size);
+        std::tie(flag, travels, dirs) = func(x_, y_, -dth);
+        if (flag) paths = set_path(paths, timeflip(travels), dirs, step_size, false);
 
         std::tie(flag, travels, dirs) = func(x_, -y_, -dth);
-        if (flag) paths = set_path(paths, travels, reflect(dirs), step_size);
+        if (flag) paths = set_path(paths, travels, reflect(dirs), step_size, true);
 
         std::tie(flag, travels, dirs) = func(-x_, -y_, dth);
-        if (flag) paths = set_path(paths, timeflip(travels), reflect(dirs), step_size);
+        if (flag) paths = set_path(paths, timeflip(travels), reflect(dirs), step_size, true);
     }
 
     return paths;
