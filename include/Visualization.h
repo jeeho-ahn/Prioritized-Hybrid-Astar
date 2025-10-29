@@ -21,36 +21,36 @@
 #include <vector>
 
 #include <Point.h>
-#include <Obstacle.h>
+#include <Entities.h>
 #include <Params.h>
+#include <TimeTable.h>
 
 
-
-
-std::tuple<double, double, double> interpolate_timed_path(const std::vector<std::tuple<double, double, double, double>>& timed_path, double t) {
-    if (t <= std::get<0>(timed_path[0])) return {std::get<1>(timed_path[0]), std::get<2>(timed_path[0]), std::get<3>(timed_path[0])};
-    if (t >= std::get<0>(timed_path.back())) return {std::get<1>(timed_path.back()), std::get<2>(timed_path.back()), std::get<3>(timed_path.back())};
-    for (size_t i = 0; i < timed_path.size() - 1; ++i) {
-        auto [t1, x1, y1, yaw1] = timed_path[i];
-        auto [t2, x2, y2, yaw2] = timed_path[i + 1];
-        if (t1 <= t && t <= t2) {
-            double frac = (t2 > t1) ? (t - t1) / (t2 - t1) : 0;
-            double x = x1 + frac * (x2 - x1);
-            double y = y1 + frac * (y2 - y1);
-            double dyaw = mod2pi(yaw2 - yaw1);
-            double yaw = yaw1 + frac * dyaw;
+std::tuple<double, double, double> interpolate_timed_path(const std::vector<Waypoint>& waypoints, double t) {
+    if (t <= waypoints[0].time) return {waypoints[0].x, waypoints[0].y, waypoints[0].yaw};
+    if (t >= waypoints.back().time) return {waypoints.back().x, waypoints.back().y, waypoints.back().yaw};
+    for (size_t i = 0; i < waypoints.size() - 1; ++i) {
+        auto& wp1 = waypoints[i];
+        auto& wp2 = waypoints[i + 1];
+        if (wp1.time <= t && t <= wp2.time) {
+            double frac = (t - wp1.time) / (wp2.time - wp1.time);
+            double x = wp1.x + frac * (wp2.x - wp1.x);
+            double y = wp1.y + frac * (wp2.y - wp1.y);
+            double dyaw = mod2pi(wp2.yaw - wp1.yaw);
+            double yaw = wp1.yaw + frac * dyaw;
             yaw = mod2pi(yaw);
             return {x, y, yaw};
         }
     }
-    return {std::get<1>(timed_path.back()), std::get<2>(timed_path.back()), std::get<3>(timed_path.back())};
+    return {waypoints.back().x, waypoints.back().y, waypoints.back().yaw};
 }
 
 
 class VizWidget : public QWidget {
 private:
-    const std::vector<std::tuple<double, double, double, double>>& timed_path;
-    const std::vector<DynamicObstacle>& obstacles;
+    const TimeTable& timetable;
+    const std::unordered_map<std::string, EntityMeta*>& entities;
+    const std::vector<Trajectory>& trajectories;
     const Params& params;
     double current_t = 0.0;
     double max_t = 0.0;
@@ -65,9 +65,11 @@ private:
     }
 
 public:
-    VizWidget(const std::vector<std::tuple<double, double, double, double>>& path, const std::vector<DynamicObstacle>& obs, const Params& p)
-        : timed_path(path), obstacles(obs), params(p) {
-        if (!timed_path.empty()) max_t = std::get<0>(timed_path.back());
+    VizWidget(const TimeTable& tt, const std::unordered_map<std::string, EntityMeta*>& ents, const std::vector<Trajectory>& trajs, const Params& p)
+        : timetable(tt), entities(ents), trajectories(trajs), params(p) {
+        for (const auto& traj : trajectories) {
+            if (!traj.waypoints.empty()) max_t = std::max(max_t, traj.waypoints.back().time);
+        }
         setMinimumSize(600, 600);
     }
 
@@ -87,10 +89,6 @@ protected:
         auto screen_x = [&](double x) { return (x - params.min_x) * sc; };
         auto screen_y = [&](double y) { return (params.max_y - y) * sc; };
 
-        // Draw boundary a little inside
-        p.setPen(Qt::black);
-        p.drawRect(QRectF(screen_x(params.min_x) + 0.5, screen_y(params.max_y) + 0.5, sc * (params.max_x - params.min_x) - 1, sc * (params.max_y - params.min_y) - 1));
-
         // Draw grid
         p.setPen(Qt::lightGray);
         for (double x = params.min_x; x <= params.max_x + 1e-6; x += params.xy_resolution) {
@@ -106,34 +104,37 @@ protected:
             p.drawLine(QPointF(sx1, sy), QPointF(sx2, sy));
         }
 
-        // Draw path
+        // Draw boundary
+        p.setPen(QPen(Qt::black,3));
+        p.drawRect(QRectF(screen_x(params.min_x) + 1, screen_y(params.max_y) + 1, sc * (params.max_x - params.min_x) - 3, sc * (params.max_y - params.min_y) - 3));
+
+
+        // Draw paths
         p.setPen(QPen(Qt::red, 2));
-        QPolygonF path_poly;
-        for (const auto& pt : timed_path) {
-            path_poly << QPointF(screen_x(std::get<1>(pt)), screen_y(std::get<2>(pt)));
+        for (const auto& traj : trajectories) {
+            QPolygonF path_poly;
+            for (const auto& wp : traj.waypoints) {
+                path_poly << QPointF(screen_x(wp.x), screen_y(wp.y));
+            }
+            p.drawPolyline(path_poly);
         }
-        p.drawPolyline(path_poly);
 
-        // Draw robot
-        auto [rx, ry, ryaw] = interpolate_timed_path(timed_path, current_t);
-        auto robot_corners = get_corners(rx, ry, ryaw, params.robot_front_length, params.robot_rear_length, params.robot_width);
-        drawFilledPolygon(p, robot_corners, QColor("#555B6E"), screen_x, screen_y);
+        // Draw entities
+        auto poses = timetable.get_poses(current_t);
+        for (const auto& [ent, pose] : poses) {
+            QColor color = (ent->type == EntityType::ROBOT) ? QColor("#555B6E") : QColor("#89B0AE");
+            auto corners = get_corners(pose.x, pose.y, pose.yaw, ent->size.front_length, ent->size.rear_length, ent->size.width);
+            drawFilledPolygon(p, corners, color, screen_x, screen_y);
 
-        // Indicate robot front with a red arrow
-        double front_x = rx + params.robot_front_length * std::cos(ryaw);
-        double front_y = ry + params.robot_front_length * std::sin(ryaw);
-        p.setPen(QPen(Qt::red, 2));
-        p.drawLine(screen_x(rx), screen_y(ry), screen_x(front_x), screen_y(front_y));
-
-        // Draw obstacles
-        for (const auto& ob : obstacles) {
-            auto [ox, oy, oyaw, is_present] = get_ob_pose(ob, current_t);
-            if (!is_present) continue;
-            auto ob_corners = get_corners(ox, oy, oyaw, ob.front, ob.rear, ob.width);
-            drawFilledPolygon(p, ob_corners, QColor("#89B0AE"), screen_x, screen_y);
+            // Indicate front with a red arrow for robots
+            if (ent->type == EntityType::ROBOT) {
+                double front_x = pose.x + ent->size.front_length * std::cos(pose.yaw);
+                double front_y = pose.y + ent->size.front_length * std::sin(pose.yaw);
+                p.setPen(QPen(QColor("FFD6BA"), 2));
+                p.drawLine(screen_x(pose.x), screen_y(pose.y), screen_x(front_x), screen_y(front_y));
+            }
         }
     }
 };
-
 
 #endif // VISUALIZATION_H
