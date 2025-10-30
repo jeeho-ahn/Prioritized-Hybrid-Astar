@@ -60,19 +60,28 @@ int main(int argc, char** argv) {
 
     std::vector<Trajectory> all_trajectories;
 
-    // Priority order
-    std::vector<std::string> priority = {"robot1", "robot2"};
+    std::unordered_map<std::string, double> robot_arrival_times;  // Track last arrival per robot for chaining
 
     // Plans: robot name -> {goal, is_transfer, obj_name}
-    std::unordered_map<std::string, std::tuple<Pose, bool, std::string>> robot_plans = {
-        {"robot1", {{4, 4, M_PI/2}, false, "obj1"}},
-        {"robot2", {{3, 2, 1}, false, ""}}
+    // Single list of plans: vector<std::tuple<std::string, Pose, bool, std::string, double>>  // robot_name, goal_pose, is_transfer, obj_name, placeholder_start_time (overridden dynamically)
+    std::vector<std::tuple<std::string, Pose, bool, std::string, double>> robot_plans = {
+        {"robot1", {4.0, 4.0, M_PI / 2}, true, "obj1", 0.0},
+        {"robot2", {4.5, 1.0, M_PI / 2}, false, "", 0.0},
+        {"robot2", {2.0, 3.0, 0.0}, false, "", 39.0}
     };
 
-    for (const auto& r_name : priority) {
-        auto [goal_pose, trans, obj_name] = robot_plans[r_name];
+
+    std::unordered_map<std::string, double> robot_current_times;  // Track last arrival per robot for chaining
+    std::unordered_map<std::string, Pose> robot_current_poses;  // Track last pose per robot
+
+    for (auto& plan : robot_plans) {
+        auto [r_name, goal_pose, trans, obj_name, provided_start_t] = plan;
         RobotMeta* r = dynamic_cast<RobotMeta*>(entities[r_name]);
-        PHAStar planner(r, goal_pose, &timetable, &entities, params, trans, obj_name);
+        double current_start_t = (provided_start_t > 0.0) ? provided_start_t : robot_current_times[r_name];  // Use provided if >0, else dynamic
+        Pose start_pose = robot_current_poses.count(r_name) ? robot_current_poses[r_name] : r->initial_pose;
+        r->initial_pose = start_pose;  // Temporarily set for planner
+
+        PHAStar planner(r, goal_pose, &timetable, &entities, params, trans, obj_name, current_start_t);
         auto start_time = std::chrono::high_resolution_clock::now();
         auto waypoints = planner.planning();
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -90,16 +99,23 @@ int main(int argc, char** argv) {
 
             Trajectory traj;
             traj.entity = r;
-            traj.start_time = 0.0;
+            traj.start_time = current_start_t;
             traj.waypoints = waypoints;
             traj.is_transfer = trans;
             traj.transferred_object = trans ? entities[obj_name] : nullptr;
             all_trajectories.push_back(traj);
             timetable.add_trajectory(traj);
+
+            // Update for potential next plan for this robot
+            robot_current_times[r_name] = waypoints.back().time;
+            robot_current_poses[r_name] = {waypoints.back().x, waypoints.back().y, waypoints.back().yaw};
         } else {
             std::cout << "Failed to find a path for " << r_name << std::endl;
+            // Continue to next plan, but note failure
         }
     }
+
+
 
     // Print TimeTable poses for robot2
 

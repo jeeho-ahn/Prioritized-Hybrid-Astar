@@ -340,9 +340,10 @@ private:
     }
 
 public:
-    PHAStar(RobotMeta* r, const Pose& goal_pose, TimeTable* tt, const std::unordered_map<std::string, EntityMeta*>* ents, const Params& p, bool trans = false, const std::string& obj_name = "")
+    PHAStar(RobotMeta* r, const Pose& goal_pose, TimeTable* tt, const std::unordered_map<std::string, EntityMeta*>* ents, const Params& p, bool trans = false, const std::string& obj_name = "", double start_t = 0.0)
         : robot(r), timetable(tt), entities(ents), is_transfer(trans), params(p) {
-        start = std::make_unique<Node>(r->initial_pose.x, r->initial_pose.y, r->initial_pose.yaw, 0.0, 0.0, 0.0, nullptr, 1);
+        // Update initial pose if chaining (but for now, assume caller updates r->initial_pose if needed)
+        start = std::make_unique<Node>(r->initial_pose.x, r->initial_pose.y, r->initial_pose.yaw, start_t, 0.0, 0.0, nullptr, 1);
         goal = std::make_unique<Node>(goal_pose.x, goal_pose.y, goal_pose.yaw, 0.0, 0.0, 0.0, nullptr, 1);
         auto it = entities->find(obj_name);
         if (is_transfer) {
