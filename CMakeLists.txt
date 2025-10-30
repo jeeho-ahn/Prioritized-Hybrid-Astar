@@ -40,6 +40,14 @@ add_executable(phastar_demo
     src/PHAstar_demo.cpp
 )
 
+add_executable(phastar_push_demo
+    src/PHAstar_push_demo.cpp
+)
+
 target_link_libraries(phastar_demo PRIVATE
+    ${QT_WIDGET_TARGET}
+)
+
+target_link_libraries(phastar_push_demo PRIVATE
     ${QT_WIDGET_TARGET}
 )

@@ -84,7 +84,9 @@ private:
     RobotMeta* robot;
     std::unique_ptr<Node> start, goal;
     TimeTable* timetable;
-    const std::unordered_map<std::string, EntityMeta*>* entities;    ObjectMeta* transferred = nullptr;
+    const std::unordered_map<std::string, EntityMeta*>* entities;
+    ObjectMeta* transferred = nullptr;
+    ObjectMeta* ignored_entity = nullptr;
     bool is_transfer;
     Params params;
     int x_width, y_width, theta_width, time_width;
@@ -167,7 +169,7 @@ private:
 
         size_t idx = 0;
         for (const auto& [ent, pose] : poses) {
-            if (ent == robot || ent == transferred) continue;
+            if (ent == robot || ent == transferred || ent == ignored_entity) continue;
             double dist_r = std::hypot(node->x - pose.x, node->y - pose.y);
             if (dist_r > robot_diag + entity_diags[idx] + params.safety_margin) {
                 ++idx;
@@ -218,7 +220,7 @@ private:
             auto poses = timetable->get_poses(t_i);
             size_t idx = 0;
             for (const auto& [ent, pose] : poses) {
-                if (ent == robot || ent == transferred) continue;
+                if (ent == robot || ent == transferred || ent == ignored_entity) continue;
                 double dist_o = std::hypot(x_i - pose.x, y_i - pose.y);
                 if (dist_o > diag_r + entity_diags[idx] + params.safety_margin) {
                     ++idx;
@@ -272,7 +274,7 @@ private:
                     auto poses = timetable->get_poses(t_i);
                     size_t idx = 0;
                     for (const auto& [ent, pose] : poses) {
-                        if (ent == robot || ent == transferred) continue;
+                        if (ent == robot || ent == transferred || ent == ignored_entity) continue;
                         double dist_o = std::hypot(x_i - pose.x, y_i - pose.y);
                         if (dist_o > diag_r + entity_diags[idx] + params.safety_margin) {
                             ++idx;
@@ -352,7 +354,12 @@ public:
         else {
             // Handle error
             transferred = nullptr;
+
+            if (!obj_name.empty()) {
+                ignored_entity = dynamic_cast<ObjectMeta*>(it->second);
+            }
         }
+
         wheel_base = robot->wheel_base;
         min_turn_radius = robot->min_turning_radius;
         max_curvature = 1.0 / min_turn_radius;
@@ -370,7 +377,7 @@ public:
         time_width = static_cast<int>(params.max_time / params.time_resolution) + 1;
         entity_diags.reserve(entities->size());
         for (const auto& [name, ent] : *entities) {
-            if (ent == robot || ent == transferred) continue;
+            if (ent == robot || ent == transferred || ent == ignored_entity) continue;
             double diag = std::sqrt((ent->size.front_length + ent->size.rear_length) * (ent->size.front_length + ent->size.rear_length) + ent->size.width * ent->size.width) / 2;
             entity_diags.push_back(diag);
         }

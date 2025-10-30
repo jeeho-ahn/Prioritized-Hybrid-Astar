@@ -40,14 +40,14 @@ int main(int argc, char** argv) {
     ObjectMeta obj1;
     obj1.name = "obj1";
     obj1.type = EntityType::OBJECT;
-    obj1.initial_pose = {1.6, 1.0, 0};
+    obj1.initial_pose = {1.2, 1.0, 0};
     obj1.size = {0.075, 0.075, 0.15};
     obj1.goal_pose = {4.6, 4.0, M_PI/2};
 
     ObjectMeta obj2;
     obj2.name = "obj2";
     obj2.type = EntityType::OBJECT;
-    obj2.initial_pose = {3.5, 3.0, 0.0};
+    obj2.initial_pose = {3.5, 2.4, 0.0};
     obj2.size = {0.075, 0.075, 0.15};
     obj2.goal_pose = {3.6, 3.0, M_PI / 2};
 
@@ -60,12 +60,12 @@ int main(int argc, char** argv) {
 
     std::vector<Trajectory> all_trajectories;
 
-    // Plans: robot name -> {goal, is_transfer, obj_name}
-    // Single list of plans: vector<std::tuple<std::string, Pose, bool, std::string, double>>  // robot_name, goal_pose, is_transfer, obj_name, placeholder_start_time (overridden dynamically)
     std::vector<std::tuple<std::string, Pose, bool, std::string, double>> robot_plans = {
-        {"robot1", {4.0, 4.0, M_PI / 2}, false, "obj1", 0.0},
-        {"robot2", {4.5, 1.0, M_PI / 2}, false, "", 0.0},
-        {"robot2", {2.0, 3.0, 0.0}, false, "", 39.0}
+        {"robot1", {3.0, 2.8, M_PI / 2}, true, "obj1", 0.0},
+        {"robot1", {3.0, 2.4, M_PI / 2}, false, "obj1", 19.0},
+        {"robot2", {2, 3.3, 0}, false, "", 0.0},
+        {"robot2", {2.5, 3.3, 0.0}, false, "obj1", 22},
+        {"robot2", {3.5, 3.3, 0.0}, true, "obj1", 25},
     };
 
 
@@ -112,8 +112,6 @@ int main(int argc, char** argv) {
             // Continue to next plan, but note failure
         }
     }
-
-
 
     // Print TimeTable poses for robot2
 
