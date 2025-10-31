@@ -43,16 +43,16 @@ std::unordered_map<std::string, EntityMeta*> initialize_entities() {
     static ObjectMeta obj1;
     obj1.name = "obj1";
     obj1.type = EntityType::OBJECT;
-    obj1.initial_pose = {1.6, 1.0, 0};
+    obj1.initial_pose = {1.6, 1.8, 0};
     obj1.size = {0.075, 0.075, 0.15};
-    obj1.goal_pose = {4.6, 4.0, M_PI/2};
+    obj1.goal_pose = {}; // don't care for static obstacles
 
     static ObjectMeta obj2;
     obj2.name = "obj2";
     obj2.type = EntityType::OBJECT;
     obj2.initial_pose = {3.5, 3.0, 0.0};
     obj2.size = {0.075, 0.075, 0.15};
-    obj2.goal_pose = {3.6, 3.0, M_PI / 2};
+    obj2.goal_pose = {}; // don't care for static obstacles
 
     return {
         {"robot1", &robot1}, {"robot2", &robot2}, {"obj1", &obj1}, {"obj2", &obj2}
@@ -61,7 +61,7 @@ std::unordered_map<std::string, EntityMeta*> initialize_entities() {
 
 std::vector<std::tuple<std::string, Pose, bool, std::string, double>> initialize_plans() {
     return {
-        {"robot1", {4.0, 4.0, M_PI / 2}, false, "obj1", 0.0},
+        {"robot1", {4.0, 4.0, M_PI / 2}, false, "", 0.0}, // agent name, goal pose, is it transferring item, ignore collision with, starting time
         {"robot2", {4.5, 1.0, M_PI / 2}, false, "", 0.0},
         {"robot2", {2.0, 3.0, 0.0}, false, "", 39.0}
     };

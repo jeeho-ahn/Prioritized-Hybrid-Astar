@@ -110,7 +110,7 @@ protected:
 
 
         // Draw paths
-        p.setPen(QPen(Qt::red, 2));
+        p.setPen(QPen(QColor("#FFD6C2"), 4));
         for (const auto& traj : trajectories) {
             QPolygonF path_poly;
             for (const auto& wp : traj.waypoints) {
