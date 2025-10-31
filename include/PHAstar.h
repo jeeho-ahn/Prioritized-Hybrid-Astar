@@ -471,5 +471,60 @@ public:
     }
 };
 
+std::vector<Trajectory> perform_planning(
+    const std::unordered_map<std::string, EntityMeta*>& entities,
+    const std::vector<std::tuple<std::string, Pose, bool, std::string, double>>& robot_plans,
+    TimeTable& timetable,
+    const Params& params,
+    const bool print_path = false)
+{
+    std::vector<Trajectory> all_trajectories;
+    std::unordered_map<std::string, double> robot_current_times;  // Track last arrival per robot for chaining
+    std::unordered_map<std::string, Pose> robot_current_poses;  // Track last pose per robot
+
+    for (auto& plan : robot_plans) {
+        auto [r_name, goal_pose, trans, obj_name, provided_start_t] = plan;
+        RobotMeta* r = dynamic_cast<RobotMeta*>(entities.at(r_name));
+        double current_start_t = (provided_start_t > 0.0) ? provided_start_t : robot_current_times[r_name];  // Use provided if >0, else dynamic
+        Pose start_pose = robot_current_poses.count(r_name) ? robot_current_poses[r_name] : r->initial_pose;
+        r->initial_pose = start_pose;  // Temporarily set for planner
+
+        PHAStar planner(r, goal_pose, &timetable, &entities, params, trans, obj_name, current_start_t);
+        auto start_time = std::chrono::high_resolution_clock::now();
+        auto waypoints = planner.planning();
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> planning_time = end_time - start_time;
+        std::cout << "Planning time for " << r_name << ": " << planning_time.count() << " seconds" << std::endl;
+
+        if (!waypoints.empty()) {
+            std::cout << "Last waypoint for " << r_name << ": time=" << waypoints.back().time << ", x=" << waypoints.back().x << ", y=" << waypoints.back().y << ", yaw=" << waypoints.back().yaw << std::endl;
+
+            if(print_path){
+                for (const auto& wp : waypoints) {
+                    std::cout << "time=" << wp.time << ", x=" << wp.x << ", y=" << wp.y << ", yaw=" << wp.yaw << std::endl;
+                }
+            }
+
+            Trajectory traj;
+            traj.entity = r;
+            traj.start_time = current_start_t;
+            traj.waypoints = waypoints;
+            traj.is_transfer = trans;
+            traj.transferred_object = trans ? entities.at(obj_name) : nullptr;
+            all_trajectories.push_back(traj);
+            timetable.add_trajectory(traj);
+
+            // Update for potential next plan for this robot
+            robot_current_times[r_name] = waypoints.back().time;
+            robot_current_poses[r_name] = {waypoints.back().x, waypoints.back().y, waypoints.back().yaw};
+        } else {
+            std::cout << "Failed to find a path for " << r_name << std::endl;
+            // Continue to next plan, but note failure
+        }
+    }
+
+    return all_trajectories;
+}
+
 
 #endif // PHASTAR_H

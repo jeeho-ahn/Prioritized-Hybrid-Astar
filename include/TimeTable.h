@@ -1,6 +1,8 @@
 #ifndef TIMETABLE_H
 #define TIMETABLE_H
 
+#include <iostream>
+#include <iomanip>
 #include <map>
 #include <unordered_map>
 
@@ -121,5 +123,23 @@ private:
         return waypoints.back();
     }
 };
+
+void print_timetable_poses(const std::unordered_map<std::string, EntityMeta*>& entities, const std::vector<Trajectory>& all_trajectories, const TimeTable& timetable)
+{
+    std::cout << "TimeTable poses for robot2:" << std::endl;
+    EntityMeta* robot2_ent = entities.at("robot2");
+    double max_tt = 0.0;
+    for (const auto& traj : all_trajectories) {
+        if (!traj.waypoints.empty()) {
+            max_tt = std::max(max_tt, traj.waypoints.back().time);
+        }
+    }
+    for (double t = 0.0; t <= max_tt + 1e-6; t += 0.1) {  // Step of 0.1 for fine-grained view
+        Pose p = timetable.get_pose(robot2_ent, t);
+        std::cout << "t=" << std::fixed << std::setprecision(4) << t
+                  << ", x=" << p.x << ", y=" << p.y << ", yaw=" << p.yaw << std::endl;
+    }
+
+}
 
 #endif // TIMETABLE_H

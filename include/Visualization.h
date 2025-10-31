@@ -137,4 +137,37 @@ protected:
     }
 };
 
+void show_results(int argc, char** argv, const TimeTable& timetable, const std::unordered_map<std::string, EntityMeta*>& entities, const std::vector<Trajectory>& all_trajectories, const Params& params) {
+    QApplication app(argc, argv);
+    QMainWindow win;
+    VizWidget* viz = new VizWidget(timetable, entities, all_trajectories, params);
+    win.setCentralWidget(viz);
+
+    QWidget* panel = new QWidget;
+    QHBoxLayout* layout = new QHBoxLayout(panel);
+    QSlider* slider = new QSlider(Qt::Horizontal);
+    double max_t = 0.0;
+    for (const auto& traj : all_trajectories) {
+        if (!traj.waypoints.empty()) max_t = std::max(max_t, traj.waypoints.back().time);
+    }
+    slider->setRange(0, static_cast<int>(max_t * 100));
+    layout->addWidget(slider);
+    QLabel* timeLabel = new QLabel("Time: 0.00 s");
+    layout->addWidget(timeLabel);
+
+    QObject::connect(slider, &QSlider::valueChanged, [viz, timeLabel](int val) {
+        double t = val / 100.0;
+        viz->setTime(t);
+        timeLabel->setText(QString("Time: %1 s").arg(t, 0, 'f', 2));
+    });
+
+    QDockWidget* dock = new QDockWidget;
+    dock->setWidget(panel);
+    win.setWindowTitle("Prioritized Hybrid A* Demo - Jeeho Ahn");
+    win.addDockWidget(Qt::BottomDockWidgetArea, dock);
+    win.resize(600, 600);
+    win.show();
+    app.exec();
+}
+
 #endif // VISUALIZATION_H
